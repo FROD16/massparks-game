@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MassParks Mystery: Hangman Edition</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        
+        /* THE MAP CONTAINER */
+        #map { height: 100%; width: 100%; background-color: #f8f9fa; }
+
+        /* UI OVERLAY LAYERS */
+        .ui-overlay {
+            position: absolute;
+            z-index: 1000;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+            top: 0; left: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* MODALS */
+        .modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+        }
+        .modal-content {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 450px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .hidden { display: none !important; }
+
+        /* HUD ELEMENTS */
+        .hud-top {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            font-size: 1.1rem;
+        }
+        .hud-bottom {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+
+        /* TYPOGRAPHY & INPUTS */
+        h1, h2 { margin: 0 0 10px 0; color: #2c3e50; }
+        .score-box { font-weight: bold; color: #27ae60; }
+        .lives-box { color: #c0392b; font-weight: bold; }
+        
+        input[type="text"] {
+            padding: 10px;
+            font-size: 1.2rem;
+            width: 50%;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            text-transform: uppercase;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #219150; }
+
+        /* The Mystery Dashes */
+        #word-display {
+            font-family: 'Courier New', monospace;
+            font-size: 2.2rem;
+            letter-spacing: 3px;
+            margin-bottom: 15px;
+            color: #333;
+            font-weight: 800;
+            word-wrap: break-word;
+        }
+
+        /* Used Letters Display */
+        #used-letters {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #666;
+            min-height: 24px;
+        }
+        .bad-letter { color: #c0392b; text-decoration: line-through; margin: 0 3px; font-weight: bold; }
+        .good-letter { color: #27ae60; margin: 0 3px; font-weight: bold;}
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div id="start-screen" class="modal">
+        <div class="modal-content">
+            <h1>MassParks Hangman</h1>
+            <p>Guess the DCR Park by its shape.</p>
+            <p style="font-size:0.9rem; color:#555;">Type 1 letter to guess a character.<br>Type the whole name to solve instantly.</p>
+            <input type="text" id="username-input" placeholder="Ranger Name" maxlength="15" style="width: 70%; margin-bottom: 15px;">
+            <br>
+            <button onclick="initGame()">Start Game</button>
+            <div id="loading-msg" style="margin-top:10px; color:#666; font-size:0.9em; display:none;">Scanning DCR Database...</div>
+        </div>
+    </div>
+
+    <div id="game-over-screen" class="modal hidden">
+        <div class="modal-content">
+            <h2 id="end-title">Game Over!</h2>
+            <p id="correct-answer-display" style="color: #c0392b; font-weight: bold; margin-bottom:15px;"></p>
+            <p>Final Score: <span id="final-score">0</span></p>
+            <h3>Top Rangers</h3>
+            <table id="leaderboard-table"></table>
+            <button onclick="location.reload()" style="margin-top: 15px;">Play Again</button>
+        </div>
+    </div>
+
+    <div id="game-ui" class="ui-overlay hidden">
+        <div class="hud-top">
+            <span class="score-box">Score: <span id="score-val">0</span></span>
+            <span class="lives-box">Lives: <span id="lives-val">6</span></span>
+        </div>
+        
+        <div style="flex-grow: 1;"></div> <div class="hud-bottom">
+            <div id="word-display">_ _ _ _ _</div>
+            <div id="used-letters">Used: </div>
+            <br>
+            <input type="text" id="guess-input" placeholder="LETTER OR NAME" onkeydown="handleEnter(event)" autocomplete="off">
+            <button onclick="submitGuess()">GUESS</button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- CONFIGURATION ---
+        const API_URL = "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/openspace/FeatureServer/0/query";
+        const QUERY_PARAMS = {
+            // Filter: DCR parks > 50 acres. 
+            where: "FEE_OWNER = 'DCR - Division of State Parks and Recreation' AND GIS_ACRES > 50",
+            outFields: "SITE_NAME, GIS_ACRES",
+            f: "geojson",
+            returnGeometry: "true",
+            outSR: "4326"
+        };
+
+        // --- STATE ---
+        let map, parkLayer, basemapLayer;
+        let parkData = [];
+        let currentPark = null;
+        let currentParkName = "";
+        let score = 0;
+        let lives = 6; // Increased for letter guessing
+        let username = "Ranger";
+        let usedParks = new Set();
+        
+        // Hangman Specific State
+        let guessedLetters = new Set();
+        let wrongLetters = [];
+
+        // --- INITIALIZATION ---
+        function initMap() {
+            map = L.map('map', {
+                center: [42.4072, -71.0825],
+                zoom: 8,
+                zoomControl: false,
+                attributionControl: false
+            });
+
+            // Basemap (Hidden initially)
+            basemapLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap'
+            });
+        }
+
+        async function initGame() {
+            const nameInput = document.getElementById('username-input');
+            if (nameInput.value.trim() === "") { alert("Please enter a name!"); return; }
+            username = nameInput.value.trim();
+            document.getElementById('loading-msg').style.display = 'block';
+
+            initMap();
+            
+            try {
+                const params = new URLSearchParams(QUERY_PARAMS);
+                const response = await fetch(`${API_URL}?${params.toString()}`);
+                const data = await response.json();
+
+                if (!data.features || data.features.length === 0) {
+                    alert("No parks found! API might be down.");
+                    return;
+                }
+
+                // Filter valid names
+                parkData = data.features.filter(f => f.properties.SITE_NAME && f.properties.SITE_NAME.trim() !== "");
+                
+                document.getElementById('start-screen').classList.add('hidden');
+                document.getElementById('game-ui').classList.remove('hidden');
+                startRound();
+
+            } catch (e) {
+                console.error(e);
+                alert("Error connecting to MassGIS.");
+            }
+        }
+
+        // --- GAME LOGIC ---
+
+        function startRound() {
+            // Reset State
+            lives = 6;
+            guessedLetters.clear();
+            wrongLetters = [];
+            
+            updateHUD();
+            document.getElementById('guess-input').value = "";
+            document.getElementById('guess-input').focus();
+
+            // 1. Map Cleanup
+            if (parkLayer) map.removeLayer(parkLayer);
+            if (map.hasLayer(basemapLayer)) map.removeLayer(basemapLayer);
+
+            // 2. Pick Random Park
+            if (usedParks.size >= parkData.length) { endGame(true); return; }
+
+            let randomIndex;
+            do { randomIndex = Math.floor(Math.random() * parkData.length); } 
+            while (usedParks.has(randomIndex));
+            
+            usedParks.add(randomIndex);
+            currentPark = parkData[randomIndex];
+            currentParkName = currentPark.properties.SITE_NAME.toUpperCase(); // Normalize to Uppercase
+            
+            console.log("Solution:", currentParkName); 
+
+            // 3. Render
+            renderWord();
+            renderUsedLetters();
+
+            // 4. Draw Shape
+            parkLayer = L.geoJSON(currentPark, {
+                style: { color: "#333", weight: 3, fillColor: "#ccc", fillOpacity: 0.5 }
+            }).addTo(map);
+
+            map.fitBounds(parkLayer.getBounds(), { padding: [50, 50] });
+        }
+
+        function renderWord() {
+            // Rebuild the word string based on guessed letters
+            let display = "";
+            let allLettersGuessed = true;
+
+            for (let char of currentParkName) {
+                if (/[A-Z]/.test(char)) { // If it's a letter
+                    if (guessedLetters.has(char)) {
+                        display += char + " ";
+                    } else {
+                        display += "_ ";
+                        allLettersGuessed = false;
+                    }
+                } else {
+                    // Punctuation/Spaces (show them automatically)
+                    if (char === ' ') display += "&nbsp;&nbsp;";
+                    else display += char + " ";
+                }
+            }
+            document.getElementById('word-display').innerHTML = display;
+
+            // Check Win Condition (via letters)
+            if (allLettersGuessed) {
+                triggerWin();
+            }
+        }
+
+        function renderUsedLetters() {
+            const container = document.getElementById('used-letters');
+            container.innerHTML = "Used: ";
+            
+            // Sort guessed letters for cleanliness
+            const sorted = Array.from(guessedLetters).sort();
+            
+            sorted.forEach(char => {
+                const isBad = !currentParkName.includes(char);
+                const span = document.createElement('span');
+                span.innerText = char;
+                span.className = isBad ? 'bad-letter' : 'good-letter';
+                container.appendChild(span);
+            });
+        }
+
+        function handleEnter(e) { if (e.key === "Enter") submitGuess(); }
+
+        function submitGuess() {
+            const inputEl = document.getElementById('guess-input');
+            const rawInput = inputEl.value.trim().toUpperCase();
+            inputEl.value = ""; // Clear input immediately
+            inputEl.focus();
+
+            if (!rawInput) return;
+
+            // SCENARIO 1: Single Letter Guess
+            if (rawInput.length === 1) {
+                if (guessedLetters.has(rawInput)) {
+                    // Already guessed - small visual cue?
+                    return; 
+                }
+
+                guessedLetters.add(rawInput);
+
+                if (currentParkName.includes(rawInput)) {
+                    // Correct Letter
+                    renderWord();
+                } else {
+                    // Wrong Letter
+                    lives--;
+                    wrongLetters.push(rawInput);
+                    renderUsedLetters();
+                    updateHUD();
+                    shakeScreen();
+                }
+            } 
+            // SCENARIO 2: Full Word Solve Attempt
+            else {
+                if (rawInput === currentParkName) {
+                    // Correct Solve!
+                    // Add all letters to set so it displays correctly
+                    for (let char of currentParkName) guessedLetters.add(char);
+                    renderWord(); // Will trigger win check
+                } else {
+                    // Wrong Solve! Penalize hard? Or just 1 life? 
+                    // Let's do 1 life for now to be nice.
+                    lives--;
+                    alert(`"${rawInput}" is incorrect!`);
+                    updateHUD();
+                    shakeScreen();
+                }
+            }
+
+            if (lives <= 0) {
+                document.getElementById('correct-answer-display').innerText = `Solution: ${currentParkName}`;
+                endGame();
+            }
+        }
+
+        function shakeScreen() {
+            const ui = document.getElementById('word-display');
+            ui.style.transform = "translateX(10px)";
+            setTimeout(() => ui.style.transform = "translateX(-10px)", 100);
+            setTimeout(() => ui.style.transform = "translateX(0)", 200);
+        }
+
+        function triggerWin() {
+            // Stop input
+            document.getElementById('guess-input').blur();
+            
+            // Bonus points for lives remaining
+            score += (lives * 50) + 100; 
+            updateHUD();
+
+            // Visuals
+            parkLayer.setStyle({ fillColor: "#2ecc71", color: "#27ae60", fillOpacity: 0.8 });
+            basemapLayer.addTo(map);
+            basemapLayer.bringToBack();
+
+            setTimeout(() => {
+                // Fly to view whole state context
+                map.flyTo([42.15, -71.6], 9, { duration: 2.0 });
+                setTimeout(startRound, 3500); 
+            }, 1000);
+        }
+
+        function updateHUD() {
+            document.getElementById('score-val').innerText = score;
+            document.getElementById('lives-val').innerText = lives;
+        }
+
+        // --- LEADERBOARD ---
+        function endGame(victory = false) {
+            document.getElementById('end-title').innerText = victory ? "You Cleared ALL Parks!" : "Game Over";
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.remove('hidden');
+
+            const STORAGE_KEY = 'massparks_scores';
+            let scores = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+            scores.push({ user: username, score: score });
+            scores.sort((a, b) => b.score - a.score); // Sort Descending
+            scores = scores.slice(0, 5); // Top 5
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+
+            // Render Table
+            const table = document.getElementById('leaderboard-table');
+            let html = `<tr><th>#</th><th>Ranger</th><th>Score</th></tr>`;
+            scores.forEach((s, i) => {
+                html += `<tr><td>${i+1}</td><td>${s.user}</td><td>${s.score}</td></tr>`;
+            });
+            table.innerHTML = html;
+        }
+
+    </script>
+</body>
+</html>
