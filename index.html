@@ -2,118 +2,106 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MassParks Mystery: Hangman Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MA Parks Geoguesser</title>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; background-color: #f8f9fa; }
         
-        /* THE MAP CONTAINER */
-        #map { height: 100%; width: 100%; background-color: #f8f9fa; }
+        #map { height: 100%; width: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
 
-        /* UI OVERLAY LAYERS */
         .ui-overlay {
-            position: absolute;
-            z-index: 1000;
-            pointer-events: none;
-            width: 100%;
-            height: 100%;
-            top: 0; left: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+            position: absolute; z-index: 1000; pointer-events: none;
+            width: 100%; height: 100%; top: 0; left: 0;
+            display: flex; flex-direction: column; justify-content: space-between;
         }
 
-        /* MODALS */
         .modal {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85);
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: auto;
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85); z-index: 2000;
+            display: flex; align-items: center; justify-content: center;
+            pointer-events: auto; padding: 20px;
         }
         .modal-content {
-            background: white;
-            padding: 2.5rem;
-            border-radius: 12px;
-            text-align: center;
-            max-width: 450px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            background: white; padding: 2rem; border-radius: 15px;
+            text-align: center; width: 100%; max-width: 500px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.6);
         }
         .hidden { display: none !important; }
 
-        /* HUD ELEMENTS */
-        .hud-top {
-            pointer-events: auto;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 15px 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            font-size: 1.1rem;
-        }
-        .hud-bottom {
-            pointer-events: auto;
+        h1 { margin: 0 0 5px 0; color: #2c3e50; font-size: 1.8rem; line-height: 1.2; }
+        .subtitle { font-size: 1.2rem; color: #27ae60; margin-bottom: 20px; font-weight: bold; display: block; }
+
+        .hud-float {
+            position: absolute; top: 20px;
             background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            padding: 8px 16px; border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-size: 1.2rem; font-weight: bold;
+            transition: transform 0.2s; pointer-events: none;
+        }
+        #hud-score { left: 20px; color: #27ae60; border: 2px solid #27ae60; }
+        #hud-lives { right: 20px; color: #c0392b; border: 2px solid #c0392b; }
+
+        .anim-pop { animation: popScale 0.4s ease-out; background: #2ecc71 !important; color: white !important; }
+        .anim-shake { animation: shakeColor 0.4s ease-in-out; background: #e74c3c !important; color: white !important; }
+
+        @keyframes popScale { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
+        @keyframes shakeColor { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+
+        .hud-bottom {
+            pointer-events: auto; background: rgba(255, 255, 255, 0.98);
+            padding: 20px; text-align: center;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            border-top-left-radius: 20px; border-top-right-radius: 20px;
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
         }
 
-        /* TYPOGRAPHY & INPUTS */
-        h1, h2 { margin: 0 0 10px 0; color: #2c3e50; }
-        .score-box { font-weight: bold; color: #27ae60; }
-        .lives-box { color: #c0392b; font-weight: bold; }
-        
         input[type="text"] {
-            padding: 10px;
-            font-size: 1.2rem;
-            width: 50%;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            text-transform: uppercase;
-            text-align: center;
-            letter-spacing: 2px;
+            padding: 12px; font-size: 1.2rem; width: 60%;
+            border: 2px solid #ccc; border-radius: 8px;
+            text-transform: uppercase; text-align: center;
+            letter-spacing: 1px; margin-right: 8px;
+            -webkit-appearance: none;
         }
         button {
-            padding: 10px 20px;
-            font-size: 1rem;
-            background: #27ae60;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
+            padding: 12px 20px; font-size: 1rem;
+            background: #27ae60; color: white; border: none;
+            border-radius: 8px; cursor: pointer; font-weight: bold;
+            transition: background 0.2s; -webkit-tap-highlight-color: transparent;
         }
-        button:hover { background: #219150; }
+        button:active { transform: scale(0.98); }
 
-        /* The Mystery Dashes */
         #word-display {
-            font-family: 'Courier New', monospace;
-            font-size: 2.2rem;
-            letter-spacing: 3px;
-            margin-bottom: 15px;
-            color: #333;
-            font-weight: 800;
-            word-wrap: break-word;
+            font-family: 'Courier New', monospace; font-size: 2rem;
+            letter-spacing: 2px; margin-bottom: 8px; color: #333;
+            font-weight: 800; word-wrap: break-word; line-height: 1.2;
         }
-
-        /* Used Letters Display */
         #used-letters {
-            margin-top: 10px;
-            font-size: 0.9rem;
-            color: #666;
-            min-height: 24px;
+            margin-bottom: 10px; font-size: 1rem; color: #666;
+            min-height: 24px; font-weight: bold;
         }
-        .bad-letter { color: #c0392b; text-decoration: line-through; margin: 0 3px; font-weight: bold; }
-        .good-letter { color: #27ae60; margin: 0 3px; font-weight: bold;}
+        .bad-letter { color: #c0392b; text-decoration: line-through; margin: 0 4px; opacity: 0.6; }
+        .good-letter { color: #27ae60; margin: 0 4px; }
 
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
         th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #f1f1f1; }
 
+        @media (max-width: 600px) {
+            h1 { font-size: 1.4rem; }
+            .modal-content { padding: 1.5rem; }
+            .hud-float { top: 10px; font-size: 1rem; padding: 6px 12px; }
+            #hud-score { left: 10px; }
+            #hud-lives { right: 10px; }
+            #word-display { font-size: 1.4rem; letter-spacing: 1px; }
+            .hud-bottom { padding: 15px; }
+            input[type="text"] { width: 55%; font-size: 1rem; padding: 10px; }
+            button { padding: 10px 15px; font-size: 0.9rem; }
+            .tip-text { font-size: 0.7rem !important; }
+        }
     </style>
 </head>
 <body>
@@ -122,48 +110,52 @@
 
     <div id="start-screen" class="modal">
         <div class="modal-content">
-            <h1>MassParks Hangman</h1>
-            <p>Guess the DCR Park by its shape.</p>
-            <p style="font-size:0.9rem; color:#555;">Type 1 letter to guess a character.<br>Type the whole name to solve instantly.</p>
-            <input type="text" id="username-input" placeholder="Ranger Name" maxlength="15" style="width: 70%; margin-bottom: 15px;">
+            <h1>Massachusetts State Parks and Recreational Facilities</h1>
+            <span class="subtitle">Geoguesser</span>
+            <p style="margin-bottom: 20px; color: #555; font-size: 0.95rem;">Identify the DCR property by its shape.</p>
+            <input type="text" id="username-input" placeholder="Player Name" maxlength="15" style="width: 80%; margin-bottom: 20px;">
             <br>
-            <button onclick="initGame()">Start Game</button>
-            <div id="loading-msg" style="margin-top:10px; color:#666; font-size:0.9em; display:none;">Scanning DCR Database...</div>
+            <button onclick="initGame()" style="width: 80%;">Start Game</button>
+            <div id="loading-msg" style="margin-top:15px; color:#7f8c8d; font-size:0.8em; display:none;">Fetching DCR Data...</div>
         </div>
     </div>
 
     <div id="game-over-screen" class="modal hidden">
         <div class="modal-content">
-            <h2 id="end-title">Game Over!</h2>
-            <p id="correct-answer-display" style="color: #c0392b; font-weight: bold; margin-bottom:15px;"></p>
-            <p>Final Score: <span id="final-score">0</span></p>
-            <h3>Top Rangers</h3>
-            <table id="leaderboard-table"></table>
-            <button onclick="location.reload()" style="margin-top: 15px;">Play Again</button>
+            <h2 id="end-title" style="font-size: 1.8rem;">Game Over!</h2>
+            <p id="correct-answer-display" style="color: #c0392b; font-weight: bold; font-size: 1.1rem; margin-bottom:15px;"></p>
+            <p style="font-size: 1.2rem;">Final Score: <span id="final-score" style="font-weight:bold;">0</span></p>
+            <h3 style="margin-top:15px; font-size: 1.1rem;">Top Players</h3>
+            <div style="max-height: 200px; overflow-y: auto;">
+                <table id="leaderboard-table"></table>
+            </div>
+            <button onclick="location.reload()" style="margin-top: 20px; width: 100%;">Play Again</button>
         </div>
     </div>
 
     <div id="game-ui" class="ui-overlay hidden">
-        <div class="hud-top">
-            <span class="score-box">Score: <span id="score-val">0</span></span>
-            <span class="lives-box">Lives: <span id="lives-val">6</span></span>
-        </div>
-        
-        <div style="flex-grow: 1;"></div> <div class="hud-bottom">
+        <div id="hud-score" class="hud-float">Score: <span id="score-val">0</span></div>
+        <div id="hud-lives" class="hud-float">Lives: <span id="lives-val">4</span></div>
+        <div style="flex-grow: 1;"></div> 
+        <div class="hud-bottom">
             <div id="word-display">_ _ _ _ _</div>
             <div id="used-letters">Used: </div>
-            <br>
-            <input type="text" id="guess-input" placeholder="LETTER OR NAME" onkeydown="handleEnter(event)" autocomplete="off">
-            <button onclick="submitGuess()">GUESS</button>
+            <div style="display:flex; justify-content:center; align-items:center;">
+                <input type="text" id="guess-input" placeholder="LETTER OR WORD" 
+                       onkeydown="handleEnter(event)" 
+                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                <button onclick="submitGuess()">GUESS</button>
+            </div>
+            <div class="tip-text" style="margin-top:8px; font-size:0.8rem; color:#888;">Tip: Try words like "FOREST", "STATE", or "PARK"</div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <script>
         // --- CONFIGURATION ---
         const API_URL = "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/openspace/FeatureServer/0/query";
         const QUERY_PARAMS = {
-            // Filter: DCR parks > 50 acres. 
             where: "FEE_OWNER = 'DCR - Division of State Parks and Recreation' AND GIS_ACRES > 50",
             outFields: "SITE_NAME, GIS_ACRES",
             f: "geojson",
@@ -177,13 +169,12 @@
         let currentPark = null;
         let currentParkName = "";
         let score = 0;
-        let lives = 6; // Increased for letter guessing
-        let username = "Ranger";
+        let lives = 4; 
+        let username = "Player";
         let usedParks = new Set();
-        
-        // Hangman Specific State
         let guessedLetters = new Set();
         let wrongLetters = [];
+        let gameStarted = false;
 
         // --- INITIALIZATION ---
         function initMap() {
@@ -194,9 +185,9 @@
                 attributionControl: false
             });
 
-            // Basemap (Hidden initially)
+            // REVERTED: Using the lightweight CartoDB tiles for performance
             basemapLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap'
+                attribution: '&copy; OpenStreetMap &copy; CARTO'
             });
         }
 
@@ -217,10 +208,9 @@
                     alert("No parks found! API might be down.");
                     return;
                 }
-
-                // Filter valid names
                 parkData = data.features.filter(f => f.properties.SITE_NAME && f.properties.SITE_NAME.trim() !== "");
                 
+                gameStarted = true; // Flag for auto-save
                 document.getElementById('start-screen').classList.add('hidden');
                 document.getElementById('game-ui').classList.remove('hidden');
                 startRound();
@@ -234,20 +224,17 @@
         // --- GAME LOGIC ---
 
         function startRound() {
-            // Reset State
-            lives = 6;
+            lives = 4; 
             guessedLetters.clear();
             wrongLetters = [];
             
-            updateHUD();
+            updateHUDDisplay(); 
             document.getElementById('guess-input').value = "";
             document.getElementById('guess-input').focus();
 
-            // 1. Map Cleanup
             if (parkLayer) map.removeLayer(parkLayer);
             if (map.hasLayer(basemapLayer)) map.removeLayer(basemapLayer);
 
-            // 2. Pick Random Park
             if (usedParks.size >= parkData.length) { endGame(true); return; }
 
             let randomIndex;
@@ -256,29 +243,26 @@
             
             usedParks.add(randomIndex);
             currentPark = parkData[randomIndex];
-            currentParkName = currentPark.properties.SITE_NAME.toUpperCase(); // Normalize to Uppercase
+            currentParkName = currentPark.properties.SITE_NAME.toUpperCase();
             
             console.log("Solution:", currentParkName); 
 
-            // 3. Render
             renderWord();
             renderUsedLetters();
 
-            // 4. Draw Shape
             parkLayer = L.geoJSON(currentPark, {
                 style: { color: "#333", weight: 3, fillColor: "#ccc", fillOpacity: 0.5 }
             }).addTo(map);
 
-            map.fitBounds(parkLayer.getBounds(), { padding: [50, 50] });
+            map.fitBounds(parkLayer.getBounds(), { padding: [50, 50] }); 
         }
 
         function renderWord() {
-            // Rebuild the word string based on guessed letters
             let display = "";
             let allLettersGuessed = true;
 
             for (let char of currentParkName) {
-                if (/[A-Z]/.test(char)) { // If it's a letter
+                if (/[A-Z]/.test(char)) { 
                     if (guessedLetters.has(char)) {
                         display += char + " ";
                     } else {
@@ -286,14 +270,12 @@
                         allLettersGuessed = false;
                     }
                 } else {
-                    // Punctuation/Spaces (show them automatically)
                     if (char === ' ') display += "&nbsp;&nbsp;";
                     else display += char + " ";
                 }
             }
             document.getElementById('word-display').innerHTML = display;
 
-            // Check Win Condition (via letters)
             if (allLettersGuessed) {
                 triggerWin();
             }
@@ -302,8 +284,6 @@
         function renderUsedLetters() {
             const container = document.getElementById('used-letters');
             container.innerHTML = "Used: ";
-            
-            // Sort guessed letters for cleanliness
             const sorted = Array.from(guessedLetters).sort();
             
             sorted.forEach(char => {
@@ -320,48 +300,34 @@
         function submitGuess() {
             const inputEl = document.getElementById('guess-input');
             const rawInput = inputEl.value.trim().toUpperCase();
-            inputEl.value = ""; // Clear input immediately
+            inputEl.value = ""; 
             inputEl.focus();
 
             if (!rawInput) return;
 
-            // SCENARIO 1: Single Letter Guess
             if (rawInput.length === 1) {
-                if (guessedLetters.has(rawInput)) {
-                    // Already guessed - small visual cue?
-                    return; 
-                }
-
+                if (guessedLetters.has(rawInput)) return; 
                 guessedLetters.add(rawInput);
-
-                if (currentParkName.includes(rawInput)) {
-                    // Correct Letter
-                    renderWord();
-                } else {
-                    // Wrong Letter
-                    lives--;
-                    wrongLetters.push(rawInput);
-                    renderUsedLetters();
-                    updateHUD();
-                    shakeScreen();
-                }
+                if (currentParkName.includes(rawInput)) renderWord();
+                else loseLife(rawInput);
             } 
-            // SCENARIO 2: Full Word Solve Attempt
             else {
-                if (rawInput === currentParkName) {
-                    // Correct Solve!
-                    // Add all letters to set so it displays correctly
-                    for (let char of currentParkName) guessedLetters.add(char);
-                    renderWord(); // Will trigger win check
+                if (currentParkName.includes(rawInput)) {
+                    for (let char of rawInput) guessedLetters.add(char);
+                    renderWord(); 
                 } else {
-                    // Wrong Solve! Penalize hard? Or just 1 life? 
-                    // Let's do 1 life for now to be nice.
-                    lives--;
-                    alert(`"${rawInput}" is incorrect!`);
-                    updateHUD();
-                    shakeScreen();
+                    alert(`"${rawInput}" is not in the name!`);
+                    loseLife(null); 
                 }
             }
+        }
+
+        function loseLife(char) {
+            lives--;
+            if(char) wrongLetters.push(char);
+            renderUsedLetters();
+            animateStatChange('hud-lives', 'anim-shake'); 
+            updateHUDDisplay();
 
             if (lives <= 0) {
                 document.getElementById('correct-answer-display').innerText = `Solution: ${currentParkName}`;
@@ -369,60 +335,85 @@
             }
         }
 
-        function shakeScreen() {
-            const ui = document.getElementById('word-display');
-            ui.style.transform = "translateX(10px)";
-            setTimeout(() => ui.style.transform = "translateX(-10px)", 100);
-            setTimeout(() => ui.style.transform = "translateX(0)", 200);
-        }
-
         function triggerWin() {
-            // Stop input
             document.getElementById('guess-input').blur();
-            
-            // Bonus points for lives remaining
             score += (lives * 50) + 100; 
-            updateHUD();
+            animateStatChange('hud-score', 'anim-pop'); 
+            updateHUDDisplay();
 
-            // Visuals
+            // Force save on every win so we have latest score
+            saveScoreInternal(username, score);
+
             parkLayer.setStyle({ fillColor: "#2ecc71", color: "#27ae60", fillOpacity: 0.8 });
             basemapLayer.addTo(map);
             basemapLayer.bringToBack();
 
             setTimeout(() => {
-                // Fly to view whole state context
                 map.flyTo([42.15, -71.6], 9, { duration: 2.0 });
                 setTimeout(startRound, 3500); 
             }, 1000);
         }
 
-        function updateHUD() {
+        function updateHUDDisplay() {
             document.getElementById('score-val').innerText = score;
             document.getElementById('lives-val').innerText = lives;
         }
 
-        // --- LEADERBOARD ---
+        function animateStatChange(elementId, animClass) {
+            const el = document.getElementById(elementId);
+            el.classList.remove(animClass);
+            void el.offsetWidth;
+            el.classList.add(animClass);
+        }
+
         function endGame(victory = false) {
+            // Flag as game over so the "beforeunload" doesn't try to double-save
+            gameStarted = false; 
+
             document.getElementById('end-title').innerText = victory ? "You Cleared ALL Parks!" : "Game Over";
             document.getElementById('final-score').innerText = score;
             document.getElementById('game-ui').classList.add('hidden');
             document.getElementById('game-over-screen').classList.remove('hidden');
 
+            saveScoreInternal(username, score);
+            displayLeaderboard();
+        }
+
+        // --- SAVING LOGIC ---
+
+        function saveScoreInternal(user, scoreVal) {
+            if (!user) return;
             const STORAGE_KEY = 'massparks_scores';
             let scores = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-            scores.push({ user: username, score: score });
-            scores.sort((a, b) => b.score - a.score); // Sort Descending
-            scores = scores.slice(0, 5); // Top 5
+            
+            // Check if user already has a score today? 
+            // For simplicity, we just push every session.
+            scores.push({ user: user, score: scoreVal, date: Date.now() });
+            
+            // Dedupe? Optional. For now let's just keep top 5.
+            scores.sort((a, b) => b.score - a.score); 
+            scores = scores.slice(0, 5); 
+            
             localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+        }
 
-            // Render Table
+        function displayLeaderboard() {
+            const scores = JSON.parse(localStorage.getItem('massparks_scores') || "[]");
             const table = document.getElementById('leaderboard-table');
-            let html = `<tr><th>#</th><th>Ranger</th><th>Score</th></tr>`;
+            let html = `<tr><th>#</th><th>Player</th><th>Score</th></tr>`;
             scores.forEach((s, i) => {
                 html += `<tr><td>${i+1}</td><td>${s.user}</td><td>${s.score}</td></tr>`;
             });
             table.innerHTML = html;
         }
+
+        // --- AUTO SAVE ON CLOSE ---
+        window.addEventListener("beforeunload", function() {
+            if (gameStarted && score > 0) {
+                // Save synchronously before page dies
+                saveScoreInternal(username, score);
+            }
+        });
 
     </script>
 </body>
